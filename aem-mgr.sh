@@ -8,19 +8,22 @@ root=~/dev/aem
 publish=
 debug="true"
 gui=-gui
-vmargs="-Xmx1g -XX:MaxPermSize=256m"
+vmargs="-Xmx2g -XX:MaxPermSize=512m"
 debugport=30303
 jmxport=9999
+port=4502
 action="start"
+
 
 function help
 {
 	usage
 	echo ""
 	echo "---Actions---"
-	echo " reset - deletes the contents of the crx-quickstart folder"
-	echo " start - Starts the specified AEM"
-	echo " stop - stops the specified AEM instance"
+	echo " compact - compacts the oak repository"
+	echo " reset   - deletes the contents of the crx-quickstart folder"
+	echo " start   - Starts the specified AEM"
+	echo " stop    - stops the specified AEM instance"
 	echo ""
 	echo "---Parameters---"
 	echo "-i  | --instance - Sets the AEM instance to use, will be a sub-folder of the root folder"
@@ -30,6 +33,33 @@ function help
 	echo "-ng | --no-gui   - Flag for not starting AEM's GUI"
 	echo "-nd | --no-debug - Flag for not starting AEM in debug mode"
 	echo "-h  | --help     - Displays this message"
+}
+
+function compact
+{
+	today="$(date +'%d-%m-%Y')"
+	repodir="$aemdir/crx-quickstart/repository"
+	oakrun="$aemdir/help/oak-run-*.jar"
+	logfile="$aemdir/help/logs/compact-$today.log"
+	
+	mkdir -p $aemdir/help/logs
+	
+	repospace=$(du -hs $repodir)
+	echo "Pre-compaction repository size: ${repospace}..."
+	
+	echo "Finding old checkpoints..."
+	java -jar $oakrun checkpoints $repodir/segmentstore >> $logfile
+
+	echo "Deleting unreferenced checkpoints..."
+	java -jar $oakrun checkpoints $repodir/segmentstore rm-unreferenced >> $logfile
+	
+	echo "Running compaction. This may take a while..."
+	java -jar $oakrun compact $repodir/segmentstore >> $logfile
+
+	echo "Compaction complete. Please check the log at: $logfile"
+	
+	repospace=$(du -hs $repodir)
+	echo "Post-compaction repository size: ${repospace}..."
 }
 
 function resetaem
@@ -60,10 +90,10 @@ function startaem
 	if [ "$debug" = "true" ]; then
 		echo "Using Debug Port $debugport"
 		echo "Using JMX Port $jmxport"
-		java -Xdebug $vmargs -Xrunjdwp:transport=dt_socket,server=y,address=$debugport,suspend=n -Dcom.sun.management.jmxremote.port=$jmxport -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -jar $aemjar $gui -nofork &
+		java -Xdebug $vmargs -Xrunjdwp:transport=dt_socket,server=y,address=$debugport,suspend=n -Dcom.sun.management.jmxremote.port=$jmxport -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -jar $aemjar $gui -nofork -port $port &
 		echo $! > $aemdir/crx-quickstart/conf/cq.pid
 	else
-		java $vmargs -jar $aemjar $gui -nofork &
+		java $vmargs -jar $aemjar $gui -nofork -port $port &
 		echo $! > $aemdir/crx-quickstart/conf/cq.pid
 	fi
     echo "AEM Instance $instance Started Successfully!"
@@ -78,7 +108,7 @@ function stopaem
 
 function usage
 {
-	echo "usage: aem-mgr [start|stop|reset] [-i aem-instance] [-r root-path] [-p] [-vm '-Xmx2g'] [-nd]"
+	echo "usage: aem-mgr [start|stop|reset|compact] [-i aem-instance] [-r root-path] [-p] [-vm '-Xmx2g'] [-nd]"
 }
 
 
@@ -103,6 +133,8 @@ while [ "$1" != "" ]; do
 		-h | --help )		    help
 								exit
 								;;
+		compact )				action="compact"
+								;;
 		reset )					action="reset"
 								;;
 		start )					action="start"
@@ -116,7 +148,17 @@ while [ "$1" != "" ]; do
 done
 
 # Perform the actions
-if [ "$action" = "start" ]; then
+if [ "$action" = "compact" ]; then
+	aemdir=$root/$instance
+	compact
+	if [ "$publish" = "1" ]; then
+		ls $root | grep ^$instance-publish.*$ | while read pub
+		do
+			aemdir=$root/$pub
+			compact
+		done
+	fi
+elif [ "$action" = "start" ]; then
 	aemdir=$root/$instance
 	startaem
 	if [ "$publish" = "1" ]; then
@@ -124,8 +166,10 @@ if [ "$action" = "start" ]; then
 		do
 			debugport=$(expr $debugport + 1)
 			jmxport=$(expr $jmxport + 1)
-				aemdir=$root/$pub
-				startaem
+			port=$(expr $port + 1)
+			jmxport=$(expr $jmxport + 1)
+			aemdir=$root/$pub
+			startaem
 		done
 	fi
 elif [ "$action" = "reset" ] ; then
@@ -144,6 +188,7 @@ elif [ "$action" = "stop" ] ; then
 	if [ "$publish" = "1" ]; then
 		ls $root | grep ^$instance-publish.*$ | while read pub
 		do
+				
 				aemdir=$root/$pub
 				stopaem
 		done

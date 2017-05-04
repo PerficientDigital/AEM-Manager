@@ -29,6 +29,7 @@ function help
 	echo "-i  | --instance - Sets the AEM instance to use, will be a sub-folder of the root folder"
 	echo "-vm | --vm-args  - Arguments passed to the JVM"
 	echo "-r  | --root     - Sets root directory under which the script will look for AEM instances"
+	echo "--port           - Specify the port on which to start AEM"
 	echo "-p  | --publish  - Starts publish instances.  These instances are assumed to be folders under the root with names like [instance]-publish-[NN] or [instance]-publish"
 	echo "-ng | --no-gui   - Flag for not starting AEM's GUI"
 	echo "-nd | --no-debug - Flag for not starting AEM in debug mode"
@@ -48,13 +49,13 @@ function compact
 	echo "Pre-compaction repository size: ${repospace}..."
 	
 	echo "Finding old checkpoints..."
-	java -jar $oakrun checkpoints $repodir/segmentstore >> $logfile
+	java -Dtar.memoryMapped=true -Xmx2g -jar $oakrun checkpoints $repodir/segmentstore >> $logfile
 
 	echo "Deleting unreferenced checkpoints..."
-	java -jar $oakrun checkpoints $repodir/segmentstore rm-unreferenced >> $logfile
+	java -Dtar.memoryMapped=true -Xmx2g -jar $oakrun checkpoints $repodir/segmentstore rm-unreferenced >> $logfile
 	
 	echo "Running compaction. This may take a while..."
-	java -jar $oakrun compact $repodir/segmentstore >> $logfile
+	java -Dtar.memoryMapped=true -Xmx2g -jar $oakrun compact $repodir/segmentstore >> $logfile
 
 	echo "Compaction complete. Please check the log at: $logfile"
 	
@@ -125,6 +126,9 @@ while [ "$1" != "" ]; do
 								root=$1
 								;;
 		-p | --publish )		publish="1"
+								;;
+		--port )				shift
+								port=$1
 								;;
 		-ng | --no-gui )		gui=
 								;;
